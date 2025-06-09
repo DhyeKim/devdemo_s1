@@ -1,0 +1,51 @@
+name: Deploy to Ubuntu Server
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps: 
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Set gradlew permissions
+      run: chmod +x ./gradlew
+
+    - name: Build with Gradle
+      run: ./gradlew build -x test
+
+    - name: Set SSH key permissions
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+
+    - name: Add SSH key
+      uses: webfactory/ssh-agent@v0.5.3
+      with:
+        ssh-private-key: ${{ secrets.SERVER_SSH_KEY }}
+
+    - name: Add known_hosts
+      run: |
+        ssh-keyscan -H 15.164.218.166 >> ~/.ssh/known_hosts
+
+    - name: Deploy to Server
+      run: scp build/libs/*.jar ubuntu@15.164.218.166:~/source_folder/app/
+
+    - name: Run SSH commands
+      run: |
+        ssh ubuntu@15.164.218.166 << 'EOF'
+          pkill -f 'java -jar' || true
+          nohup java -jar ~/source_folder/app/devdemo_s1-0.0.1-SNAPSHOT.jar > log.txt 2>&1 &
+        EOF
